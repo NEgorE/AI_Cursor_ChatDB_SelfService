@@ -1,0 +1,7 @@
+# ChatDB SelfService configuration example
+# Copy this file to config.yaml and fill in real values.
+
+bot_token: "your_bot_token_here"
+initial_superuser_name: "your_initial_superuser_name_here"
+database_url: "sqlite:///data/chatdb.sqlite3"
+
