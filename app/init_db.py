@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from app.config import load_config
 from app.db import build_engine
-from app.models import Base, Role, User
+from app.models import Base, Role, User, VisibilityGroup
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -15,7 +15,9 @@ def init_db(config_path: str = "config.yaml") -> None:
     with Session(engine) as session:
         admin_role = _get_or_create_role(session, "Admin")
         _get_or_create_role(session, "DefaultUser")
-        _get_or_create_superuser(session, config.initial_superuser_name, admin_role.id)
+        administrators_group = _get_or_create_visibility_group(session, "Administrators")
+        superuser = _get_or_create_superuser(session, config.initial_superuser_name, admin_role.id)
+        _ensure_user_in_visibility_group(superuser, administrators_group)
         session.commit()
 
 
@@ -50,6 +52,23 @@ def _get_or_create_superuser(session: Session, initial_name: str, admin_role_id:
     session.add(user)
     session.flush()
     return user
+
+
+def _get_or_create_visibility_group(session: Session, group_name: str) -> VisibilityGroup:
+    group = session.scalar(select(VisibilityGroup).where(VisibilityGroup.name == group_name))
+    if group:
+        return group
+
+    group = VisibilityGroup(name=group_name)
+    session.add(group)
+    session.flush()
+    return group
+
+
+def _ensure_user_in_visibility_group(user: User, group: VisibilityGroup) -> None:
+    if any(existing_group.id == group.id for existing_group in user.visibility_groups):
+        return
+    user.visibility_groups.append(group)
 
 
 if __name__ == "__main__":

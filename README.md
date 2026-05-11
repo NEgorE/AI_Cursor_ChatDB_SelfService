@@ -22,8 +22,9 @@ python -m app.init_db
 ```
 
 This command:
-- creates tables `roles` and `users`;
+- creates tables `roles`, `users`, and `visibility_groups`;
 - seeds roles `Admin` and `DefaultUser`;
+- seeds visibility group `Administrators`;
 - creates initial superuser from `initial_superuser_name`.
 
 ## 3) Run bot
