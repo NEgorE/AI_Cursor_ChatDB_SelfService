@@ -5,3 +5,33 @@ bot_token: "your_bot_token_here"
 initial_superuser_name: "your_initial_superuser_name_here"
 database_url: "sqlite:///data/chatdb.sqlite3"
 
+commands:
+  - command: "start"
+    description: "Регистрация/вход в ChatDB MVP"
+    order: 10
+    admin_only: false
+  - command: "whoami"
+    description: "Показать текущего пользователя"
+    order: 20
+    admin_only: false
+  - command: "users"
+    description: "Показать пользователей (Admin)"
+    order: 30
+    admin_only: true
+  - command: "groups"
+    description: "Показать группы (Admin)"
+    order: 40
+    admin_only: true
+  - command: "connections"
+    description: "Показать подключения (Admin)"
+    order: 50
+    admin_only: true
+  - command: "ping"
+    description: "Проверка, что бот жив"
+    order: 60
+    admin_only: false
+  - command: "help"
+    description: "Показать меню команд"
+    order: 70
+    admin_only: false
+

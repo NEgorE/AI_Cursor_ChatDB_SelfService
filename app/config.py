@@ -8,10 +8,30 @@ import yaml
 
 
 @dataclass(frozen=True)
+class CommandConfig:
+    command: str
+    description: str
+    order: int
+    admin_only: bool = False
+
+
+@dataclass(frozen=True)
 class AppConfig:
     bot_token: str
     initial_superuser_name: str
     database_url: str
+    commands: list[CommandConfig]
+
+
+DEFAULT_COMMANDS: list[CommandConfig] = [
+    CommandConfig(command="start", description="Регистрация/вход в ChatDB MVP", order=10),
+    CommandConfig(command="whoami", description="Показать текущего пользователя", order=20),
+    CommandConfig(command="users", description="Показать пользователей (Admin)", order=30, admin_only=True),
+    CommandConfig(command="groups", description="Показать группы (Admin)", order=40, admin_only=True),
+    CommandConfig(command="connections", description="Показать подключения (Admin)", order=50, admin_only=True),
+    CommandConfig(command="ping", description="Проверка, что бот жив", order=60),
+    CommandConfig(command="help", description="Показать меню команд", order=70),
+]
 
 
 def load_config(path: str = "config.yaml") -> AppConfig:
@@ -34,9 +54,42 @@ def load_config(path: str = "config.yaml") -> AppConfig:
         raise ValueError("config.initial_superuser_name is required.")
     if not database_url:
         raise ValueError("config.database_url is required.")
+    commands = _parse_commands(raw.get("commands"))
 
     return AppConfig(
         bot_token=bot_token,
         initial_superuser_name=initial_superuser_name,
         database_url=database_url,
+        commands=commands,
     )
+
+
+def _parse_commands(raw_commands: Any) -> list[CommandConfig]:
+    if not isinstance(raw_commands, list):
+        return list(DEFAULT_COMMANDS)
+
+    parsed: list[CommandConfig] = []
+    for item in raw_commands:
+        if not isinstance(item, dict):
+            continue
+        command = str(item.get("command", "")).strip().lstrip("/")
+        description = str(item.get("description", "")).strip()
+        if not command or not description:
+            continue
+        try:
+            order = int(item.get("order", 0))
+        except (TypeError, ValueError):
+            continue
+        admin_only = bool(item.get("admin_only", False))
+        parsed.append(
+            CommandConfig(
+                command=command,
+                description=description,
+                order=order,
+                admin_only=admin_only,
+            )
+        )
+
+    if not parsed:
+        return list(DEFAULT_COMMANDS)
+    return sorted(parsed, key=lambda cmd: (cmd.order, cmd.command))
