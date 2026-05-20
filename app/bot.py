@@ -1,14 +1,53 @@
 from __future__ import annotations
 
-from telegram import BotCommand, BotCommandScopeChat, Update
+from telegram import BotCommand, BotCommandScopeChat, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.error import TelegramError
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import (
+    Application,
+    ApplicationHandlerStop,
+    CallbackQueryHandler,
+    CommandHandler,
+    ContextTypes,
+    TypeHandler,
+)
 
 from app.config import AppConfig, CommandConfig, load_config
 from app.db import build_session_factory
 from app.models import Connection, Role, User, UserVisibilityGroup, VisibilityGroup
 from sqlalchemy import create_engine, or_, select, text
 from sqlalchemy.orm import joinedload, selectinload
+
+USERS_PER_PAGE = 6
+BLOCKED_USER_TEXT = "Пользователь заблокирован, обратитесь к администратору."
+
+
+async def block_inactive_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    tg_user = update.effective_user
+    if not tg_user:
+        return
+
+    is_bot_command = bool(
+        update.message and update.message.text and update.message.text.startswith("/")
+    )
+    if not is_bot_command and not update.callback_query:
+        return
+
+    session_factory = context.application.bot_data.get("session_factory")
+    if not session_factory:
+        return
+
+    with session_factory() as session:
+        user = _get_bound_user(session, tg_user.id)
+
+    if not user or user.is_active:
+        return
+
+    if update.callback_query:
+        await update.callback_query.answer(BLOCKED_USER_TEXT, show_alert=True)
+    elif update.message:
+        await update.message.reply_text(BLOCKED_USER_TEXT)
+    raise ApplicationHandlerStop()
+
 
 async def on_startup(application: Application) -> None:
     base_commands = _build_bot_commands(application.bot_data["command_configs"], include_admin=False)
@@ -159,51 +198,13 @@ async def users(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await update.message.reply_text("Недостаточно прав. Команда доступна только Admin.")
             return
 
-        user_rows = session.scalars(
-            select(User)
-            .options(joinedload(User.role), selectinload(User.visibility_groups))
-            .order_by(User.id)
-        ).all()
+        user_rows = _fetch_all_users(session)
         if not user_rows:
             await update.message.reply_text("Пользователей в БД пока нет.")
             return
 
-        cards: list[str] = []
-        for row in user_rows:
-            groups_text = ", ".join(sorted(g.name for g in row.visibility_groups)) or "-"
-            tg = str(row.telegram_user_id) if row.telegram_user_id is not None else "-"
-            un = f"@{row.telegram_username}" if row.telegram_username else "-"
-            cards.append(
-                "\n".join(
-                    [
-                        f"#{row.id} {row.full_name}",
-                        f"role: {row.role.name} | active: {row.is_active}",
-                        f"telegram: {un} (id: {tg})",
-                        f"groups: {groups_text}",
-                        (
-                            f"/deactivate_user {row.id}"
-                            if row.is_active
-                            else f"/activate_user {row.id}"
-                        ),
-                    ]
-                )
-            )
-
-        header = "Пользователи:\n"
-        chunk: list[str] = []
-        current_len = len(header)
-        max_len = 4000
-
-        for card in cards:
-            card_with_sep = card + "\n\n"
-            if current_len + len(card_with_sep) > max_len and chunk:
-                await update.message.reply_text(header + "".join(chunk).rstrip())
-                chunk = []
-                current_len = len(header)
-            chunk.append(card_with_sep)
-            current_len += len(card_with_sep)
-
-        await update.message.reply_text(header + "".join(chunk).rstrip())
+        text, keyboard = _build_users_page_view(user_rows, page=0)
+        await update.message.reply_text(text, reply_markup=keyboard)
 
 
 async def groups(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -247,71 +248,59 @@ async def groups(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def activate_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not update.effective_user or not update.message:
-        return
-    if len(context.args) != 1 or not context.args[0].isdigit():
-        await update.message.reply_text("Формат: /activate_user <user_id>")
-        return
-
-    target_user_id = int(context.args[0])
-    session_factory = context.application.bot_data["session_factory"]
-    tg_user = update.effective_user
-    with session_factory() as session:
-        actor = _get_bound_user(session, tg_user.id)
-        if not actor:
-            await update.message.reply_text("Пользователь не найден в БД.")
-            return
-        if actor.role.name != "Admin":
-            await update.message.reply_text("Недостаточно прав. Команда доступна только Admin.")
-            return
-
-        target_user = session.scalar(select(User).where(User.id == target_user_id))
-        if not target_user:
-            await update.message.reply_text("Пользователь для активации не найден.")
-            return
-        if target_user.is_active:
-            await update.message.reply_text("Пользователь уже активен.")
-            return
-
-        target_user.is_active = True
-        session.commit()
-        await update.message.reply_text(
-            f"Пользователь '{target_user.full_name}' (id={target_user.id}) активирован."
-        )
+    await _handle_user_status_command(update, context, activate=True)
 
 
 async def deactivate_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not update.effective_user or not update.message:
-        return
-    if len(context.args) != 1 or not context.args[0].isdigit():
-        await update.message.reply_text("Формат: /deactivate_user <user_id>")
+    await _handle_user_status_command(update, context, activate=False)
+
+
+async def user_status_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    if not query or not query.data or not update.effective_user or not query.message:
         return
 
-    target_user_id = int(context.args[0])
     session_factory = context.application.bot_data["session_factory"]
-    tg_user = update.effective_user
+
+    if query.data.startswith("upage:"):
+        page_raw = query.data.removeprefix("upage:")
+        if not page_raw.isdigit():
+            await query.answer()
+            return
+        page = int(page_raw)
+        with session_factory() as session:
+            actor = _get_bound_user(session, update.effective_user.id)
+            if not actor or actor.role.name != "Admin":
+                await query.answer("Недостаточно прав.", show_alert=True)
+                return
+            user_rows = _fetch_all_users(session)
+            text, keyboard = _build_users_page_view(user_rows, page=page)
+        await query.edit_message_text(text, reply_markup=keyboard)
+        await query.answer()
+        return
+
+    parsed = _parse_user_action_callback(query.data)
+    if not parsed:
+        await query.answer()
+        return
+
+    activate, target_user_id, page = parsed
     with session_factory() as session:
-        actor = _get_bound_user(session, tg_user.id)
-        if not actor:
-            await update.message.reply_text("Пользователь не найден в БД.")
-            return
-        if actor.role.name != "Admin":
-            await update.message.reply_text("Недостаточно прав. Команда доступна только Admin.")
-            return
-
-        target_user = session.scalar(select(User).where(User.id == target_user_id))
-        if not target_user:
-            await update.message.reply_text("Пользователь для деактивации не найден.")
-            return
-        if not target_user.is_active:
-            await update.message.reply_text("Пользователь уже деактивирован.")
-            return
-
-        target_user.is_active = False
-        session.commit()
-        await update.message.reply_text(
-            f"Пользователь '{target_user.full_name}' (id={target_user.id}) деактивирован."
+        ok, message = _set_user_active_status(
+            session,
+            actor_telegram_id=update.effective_user.id,
+            target_user_id=target_user_id,
+            activate=activate,
         )
+        if not ok:
+            await query.answer(message, show_alert=True)
+            return
+
+        user_rows = _fetch_all_users(session)
+        text, keyboard = _build_users_page_view(user_rows, page=page)
+
+    await query.edit_message_text(f"{message}\n\n{text}", reply_markup=keyboard)
+    await query.answer("Готово")
 
 
 async def create_group(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -529,6 +518,174 @@ def _get_bound_user(session, telegram_user_id: int) -> User | None:
     )
 
 
+def _fetch_all_users(session) -> list[User]:
+    return session.scalars(
+        select(User)
+        .options(joinedload(User.role), selectinload(User.visibility_groups))
+        .order_by(User.id)
+    ).all()
+
+
+def _users_total_pages(total_users: int) -> int:
+    return max(1, (total_users + USERS_PER_PAGE - 1) // USERS_PER_PAGE)
+
+
+def _format_user_card(row: User) -> str:
+    groups_text = ", ".join(sorted(g.name for g in row.visibility_groups)) or "-"
+    tg = str(row.telegram_user_id) if row.telegram_user_id is not None else "-"
+    un = f"@{row.telegram_username}" if row.telegram_username else "-"
+    return "\n".join(
+        [
+            f"#{row.id} {row.full_name}",
+            f"role: {row.role.name} | active: {row.is_active}",
+            f"telegram: {un} (id: {tg})",
+            f"groups: {groups_text}",
+        ]
+    )
+
+
+def _build_users_page_view(user_rows: list[User], page: int) -> tuple[str, InlineKeyboardMarkup]:
+    total_pages = _users_total_pages(len(user_rows))
+    page = max(0, min(page, total_pages - 1))
+    start = page * USERS_PER_PAGE
+    page_rows = user_rows[start : start + USERS_PER_PAGE]
+
+    header = f"Пользователи ({len(user_rows)}):"
+    if total_pages > 1:
+        header += f"\nстр. {page + 1}/{total_pages}"
+
+    if page_rows:
+        body = "\n\n".join(_format_user_card(row) for row in page_rows)
+        text = f"{header}\n\n{body}"
+    else:
+        text = f"{header}\n\nНа этой странице нет пользователей."
+
+    keyboard = _build_users_page_keyboard(page_rows, page, total_pages)
+    return text, keyboard
+
+
+def _build_users_page_keyboard(
+    page_rows: list[User], page: int, total_pages: int
+) -> InlineKeyboardMarkup:
+    buttons: list[list[InlineKeyboardButton]] = []
+    row_buttons: list[InlineKeyboardButton] = []
+
+    for user in page_rows:
+        if user.is_active:
+            label = f"Деактив. #{user.id}"
+            callback_data = f"udeact:{user.id}:{page}"
+        else:
+            label = f"Актив. #{user.id}"
+            callback_data = f"uact:{user.id}:{page}"
+        row_buttons.append(InlineKeyboardButton(label, callback_data=callback_data))
+        if len(row_buttons) == 2:
+            buttons.append(row_buttons)
+            row_buttons = []
+
+    if row_buttons:
+        buttons.append(row_buttons)
+
+    nav_row: list[InlineKeyboardButton] = []
+    if page > 0:
+        nav_row.append(InlineKeyboardButton("◀️ Назад", callback_data=f"upage:{page - 1}"))
+    if page < total_pages - 1:
+        nav_row.append(InlineKeyboardButton("Вперёд ▶️", callback_data=f"upage:{page + 1}"))
+    if nav_row:
+        buttons.append(nav_row)
+
+    return InlineKeyboardMarkup(buttons)
+
+
+def _parse_user_action_callback(data: str) -> tuple[bool, int, int] | None:
+    if data.startswith("uact:"):
+        activate = True
+        payload = data.removeprefix("uact:")
+    elif data.startswith("udeact:"):
+        activate = False
+        payload = data.removeprefix("udeact:")
+    else:
+        return None
+
+    parts = payload.split(":")
+    if not parts or not parts[0].isdigit():
+        return None
+
+    target_user_id = int(parts[0])
+    page = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
+    return activate, target_user_id, page
+
+
+async def _handle_user_status_command(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, activate: bool
+) -> None:
+    if not update.effective_user or not update.message:
+        return
+
+    user_id = _extract_user_id_from_command(context.args, update.message.text, activate)
+    if user_id is None:
+        command_name = "activate_user" if activate else "deactivate_user"
+        await update.message.reply_text(f"Формат: /{command_name} <user_id>")
+        return
+
+    session_factory = context.application.bot_data["session_factory"]
+    with session_factory() as session:
+        ok, message = _set_user_active_status(
+            session,
+            actor_telegram_id=update.effective_user.id,
+            target_user_id=user_id,
+            activate=activate,
+        )
+    await update.message.reply_text(message)
+
+
+def _extract_user_id_from_command(
+    args: list[str], message_text: str | None, activate: bool
+) -> int | None:
+    if len(args) == 1 and args[0].isdigit():
+        return int(args[0])
+
+    if not message_text:
+        return None
+
+    command_name = "activate_user" if activate else "deactivate_user"
+    for part in message_text.strip().split():
+        if part.startswith(f"/{command_name}"):
+            suffix = part.removeprefix(f"/{command_name}")
+            if suffix.isdigit():
+                return int(suffix)
+            continue
+        if part.isdigit():
+            return int(part)
+    return None
+
+
+def _set_user_active_status(
+    session, actor_telegram_id: int, target_user_id: int, activate: bool
+) -> tuple[bool, str]:
+    actor = _get_bound_user(session, actor_telegram_id)
+    if not actor:
+        return False, "Пользователь не найден в БД."
+    if actor.role.name != "Admin":
+        return False, "Недостаточно прав. Команда доступна только Admin."
+
+    target_user = session.scalar(select(User).where(User.id == target_user_id))
+    if not target_user:
+        return False, "Целевой пользователь не найден."
+
+    if activate:
+        if target_user.is_active:
+            return False, "Пользователь уже активен."
+        target_user.is_active = True
+        session.commit()
+        return True, f"Пользователь '{target_user.full_name}' (id={target_user.id}) активирован."
+
+    if not target_user.is_active:
+        return False, "Пользователь уже деактивирован."
+    target_user.is_active = False
+    session.commit()
+    return True, f"Пользователь '{target_user.full_name}' (id={target_user.id}) деактивирован."
+
+
 def _parse_group_names(raw_group_names: str) -> list[str]:
     parsed = [name.strip() for name in raw_group_names.split(",")]
     return [name for name in parsed if name]
@@ -601,12 +758,20 @@ def run_bot(config_path: str = "config.yaml") -> None:
     app.bot_data["session_factory"] = session_factory
     app.bot_data["command_configs"] = config.commands
 
+    app.add_handler(TypeHandler(Update, block_inactive_user), group=-1)
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("ping", ping))
     app.add_handler(CommandHandler("whoami", whoami))
     app.add_handler(CommandHandler("users", users))
     app.add_handler(CommandHandler("activate_user", activate_user))
     app.add_handler(CommandHandler("deactivate_user", deactivate_user))
+    app.add_handler(
+        CallbackQueryHandler(
+            user_status_callback,
+            pattern=r"^(uact|udeact):\d+(:\d+)?$|^upage:\d+$",
+        )
+    )
     app.add_handler(CommandHandler("groups", groups))
     app.add_handler(CommandHandler("create_group", create_group))
     app.add_handler(CommandHandler("create_connection", create_connection))
