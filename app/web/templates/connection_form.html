@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Новое подключение' if mode == 'new' else 'Изменение подключения #' ~ connection_id }} — ChatDB{% endblock %}
+{% block page_title %}{{ 'Новое подключение' if mode == 'new' else 'Изменение #' ~ connection_id ~ ' «' ~ connection_name ~ '»' }}{% endblock %}
+{% block content %}
+<div class="card form-card">
+  {% if error %}<div class="flash err">{{ error }}</div>{% endif %}
+  {% if check_error %}
+  <div class="flash err">
+    <strong>Проверка подключения не прошла:</strong>
+    <pre class="error-details">{{ check_error }}</pre>
+  </div>
+  {% endif %}
+  <form method="post" action="{{ '/connections/new' if mode == 'new' else '/connections/' ~ connection_id ~ '/edit' }}">
+    <div class="field">
+      <label for="name">Имя</label>
+      <input id="name" name="name" value="{{ values.name }}" required
+             placeholder="уникальное имя подключения">
+    </div>
+    <div class="field">
+      <label for="url">Адрес базы (URL)</label>
+      <input id="url" name="url" value="{{ values.url }}" required class="mono"
+             placeholder="postgresql://user:password@host:5432/dbname или sqlite:///data/mydb.sqlite3">
+      <p class="hint">URL будет проверен подключением к базе (SELECT 1).</p>
+    </div>
+    <div class="field">
+      <label for="roles">Видимость (роли)</label>
+      <input id="roles" name="roles" value="{{ values.roles }}" class="mono"
+             placeholder="Admin, Analyst">
+      <p class="hint">Роли через запятую. <span class="mono">-</span> — видят все пользователи; пусто — только роль создателя.</p>
+    </div>
+    {% if can_force_save %}
+    <div class="field checkbox-field">
+      <label><input type="checkbox" name="force" value="1"> Сохранить без успешной проверки (как «-» в боте)</label>
+    </div>
+    {% endif %}
+    <div class="form-actions">
+      <button type="submit" class="btn primary">{{ 'Создать' if mode == 'new' else 'Сохранить' }}</button>
+      <a href="/connections" class="btn ghost">Отмена</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

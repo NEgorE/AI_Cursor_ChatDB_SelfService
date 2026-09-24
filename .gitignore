@@ -1,0 +1,7 @@
+# Local secrets
+config.yaml
+
+# Local runtime artifacts
+data/
+__pycache__/
+

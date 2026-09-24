@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Роль «{{ role_name }}» — ChatDB{% endblock %}
+{% block page_title %}Изменение роли «{{ role_name }}»{% endblock %}
+{% block content %}
+<div class="card form-card">
+  <form method="post" action="/roles/{{ role_id }}/edit">
+    <div class="field">
+      <label for="name">Название</label>
+      <input id="name" name="name" value="{{ values.name }}" required>
+    </div>
+    <div class="field">
+      <label for="description">Описание</label>
+      <textarea id="description" name="description" rows="3">{{ values.description }}</textarea>
+      <p class="hint">Пусто — без описания.</p>
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn primary">Сохранить</button>
+      <a href="/roles" class="btn ghost">Отмена</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

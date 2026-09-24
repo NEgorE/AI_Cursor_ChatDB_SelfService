@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Пользователи — ChatDB{% endblock %}
+{% block page_title %}Пользователи <span class="count">({{ users|length }})</span>{% endblock %}
+{% block content %}
+<div class="card-list">
+  {% for u in users %}
+  <div class="card conn-card {{ 'dim' if not u.is_active }}">
+    <div class="conn-head">
+      <div class="conn-title">
+        <span class="mono id">#{{ u.id }}</span> <strong>{{ u.full_name }}</strong>
+        <span class="badge {{ 'ok' if u.is_active else 'off' }}">{{ 'активен' if u.is_active else 'заблокирован' }}</span>
+      </div>
+      <div class="conn-actions">
+        <form method="post" action="/users/{{ u.id }}/status">
+          <input type="hidden" name="state" value="{{ 'off' if u.is_active else 'on' }}">
+          <button type="submit" class="btn ghost small" {{ 'disabled' if u.id == actor.id else '' }}>{{ 'Заблокировать' if u.is_active else 'Разблокировать' }}</button>
+        </form>
+      </div>
+    </div>
+    <div class="kv kv-grid">
+      <div class="kv-row"><span class="kv-key">telegram</span>
+        <span class="kv-val mono">{% if u.username %}@{{ u.username }} ({{ u.telegram_id }}){% else %}{{ u.telegram_id or "-" }}{% endif %}</span></div>
+      <div class="kv-row"><span class="kv-key">роли</span>
+        <span class="kv-val">
+          {% for r in u.roles %}
+          <span class="badge role">{{ r.name }}{% if r.removable %}
+            <form class="inline-form" method="post" action="/users/{{ u.id }}/remove_role">
+              <input type="hidden" name="role_name" value="{{ r.name }}">
+              <button type="submit" class="badge-x" title="Забрать роль {{ r.name }}">×</button>
+            </form>{% endif %}
+          </span>
+          {% else %}<span class="muted">-</span>{% endfor %}
+        </span></div>
+      <div class="kv-row"><span class="kv-key">добавить роль</span>
+        <span class="kv-val">
+        <form class="inline-form" method="post" action="/users/{{ u.id }}/add_role">
+          <select name="role_id" class="inline-select">
+            {% for r in role_options %}<option value="{{ r.id }}">{{ r.name }}</option>{% endfor %}
+          </select>
+          <button type="submit" class="btn ghost small">Присвоить</button>
+        </form>
+        </span></div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

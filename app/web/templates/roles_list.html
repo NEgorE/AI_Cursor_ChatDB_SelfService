@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Роли — ChatDB{% endblock %}
+{% block page_title %}Роли <span class="count">({{ roles|length }})</span>{% endblock %}
+{% block content %}
+<div class="card form-card">
+  <h2>Новая роль</h2>
+  <form method="post" action="/roles/new" class="inline-fields">
+    <input name="name" placeholder="название" required>
+    <input name="description" placeholder="описание (можно пусто)">
+    <button type="submit" class="btn primary">Создать</button>
+  </form>
+</div>
+
+{% if roles %}
+<div class="card-list">
+  {% for r in roles %}
+  <div class="card conn-card">
+    <div class="conn-head">
+      <div class="conn-title">
+        <span class="mono id">#{{ r.id }}</span> <strong>{{ r.name }}</strong>
+        {% if r.protected %}<span class="badge type">системная</span>{% endif %}
+      </div>
+      <div class="conn-actions">
+        <a href="/roles/{{ r.id }}/edit" class="btn ghost small">Изменить</a>
+        {% if not r.protected %}
+        <form method="post" action="/roles/{{ r.id }}/delete"
+              data-confirm="Удалить роль «{{ r.name }}»? Пользователи будут переведены в DefaultUser.">
+          <button type="submit" class="btn danger small">Удалить</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+    <div class="kv kv-grid">
+      <div class="kv-row"><span class="kv-key">описание</span><span class="kv-val">{{ r.description or "-" }}</span></div>
+      <div class="kv-row"><span class="kv-key">пользователей</span><span class="kv-val mono">{{ r.users_count }}</span></div>
+      <div class="kv-row"><span class="kv-key">подключений с ролью</span><span class="kv-val mono">{{ r.connections_count }}</span></div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<p class="empty">Ролей нет.</p>
+{% endif %}
+{% endblock %}

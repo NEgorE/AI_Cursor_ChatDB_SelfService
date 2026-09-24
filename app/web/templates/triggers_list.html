@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Триггеры — ChatDB{% endblock %}
+{% block page_title %}Триггеры <span class="count">({{ total_count }})</span>{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <a href="/triggers/schedule" class="btn ghost">Расписание на сутки</a>
+  <a href="/triggers/new" class="btn primary">+ Создать</a>
+</div>
+
+{% if items %}
+<div class="card-list">
+  {% for t in items %}
+  <div class="card conn-card">
+    <div class="conn-head">
+      <div class="conn-title">
+        <span class="mono id">#{{ t.id }}</span> <strong>{{ t.name }}</strong>
+        <span class="badge type">{{ t.type }}</span>
+        <span class="badge {{ 'ok' if t.is_active else 'off' }}">{{ 'активен' if t.is_active else 'выключен' }}</span>
+      </div>
+      <div class="conn-actions">
+        <form method="post" action="/triggers/{{ t.id }}/check">
+          <button type="submit" class="btn ghost small">Проверить</button>
+        </form>
+        {% if t.can_manage %}
+        <a href="/triggers/{{ t.id }}/edit" class="btn ghost small">Изменить</a>
+        <form method="post" action="/triggers/{{ t.id }}/toggle">
+          <input type="hidden" name="state" value="{{ 'off' if t.is_active else 'on' }}">
+          <button type="submit" class="btn ghost small">{{ 'Выключить' if t.is_active else 'Включить' }}</button>
+        </form>
+        <form method="post" action="/triggers/{{ t.id }}/delete" data-confirm="Удалить триггер #{{ t.id }} «{{ t.name }}»?">
+          <button type="submit" class="btn danger small">Удалить</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+    <div class="kv kv-grid">
+      <div class="kv-row"><span class="kv-key">{{ 'чат' if t.type == 'групповой' else 'получатель' }}</span><span class="kv-val mono">{{ t.target }}</span></div>
+      <div class="kv-row"><span class="kv-key">подключение</span><span class="kv-val mono">{{ t.connection_name }}</span></div>
+      <div class="kv-row"><span class="kv-key">расписание</span><span class="kv-val mono">{{ t.schedule }}</span></div>
+      <div class="kv-row"><span class="kv-key">сообщение</span><span class="kv-val">{{ t.message }}</span></div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% if total_pages > 1 %}
+<div class="pagination">
+  {% if page > 0 %}<a href="/triggers?page={{ page - 1 }}" class="btn ghost small">&#9664; Назад</a>{% endif %}
+  <span class="mono">стр. {{ page + 1 }}/{{ total_pages }}</span>
+  {% if page < total_pages - 1 %}<a href="/triggers?page={{ page + 1 }}" class="btn ghost small">Вперёд &#9654;</a>{% endif %}
+</div>
+{% endif %}
+{% else %}
+<p class="empty">Доступных триггеров пока нет (роль: {{ role_name }}).</p>
+{% endif %}
+{% endblock %}

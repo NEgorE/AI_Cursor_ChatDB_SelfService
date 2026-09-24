@@ -1,0 +1,1 @@
+"""ChatDB SelfService MVP package."""

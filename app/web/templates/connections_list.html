@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Подключения — ChatDB{% endblock %}
+{% block page_title %}Подключения <span class="count">({{ total_count }})</span>{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <span class="muted small">Видимость по ролям, как в боте: <span class="mono">/connections</span></span>
+  {% if admin %}
+  <a href="/connections/new" class="btn primary">+ Создать</a>
+  {% endif %}
+</div>
+
+{% if items %}
+<div class="card-list">
+  {% for c in items %}
+  <div class="card conn-card">
+    <div class="conn-head">
+      <div class="conn-title"><span class="mono id">#{{ c.id }}</span> <strong>{{ c.name }}</strong>
+        <span class="badge {{ 'ok' if c.is_active else 'off' }}">{{ 'активно' if c.is_active else 'выключено' }}</span>
+      </div>
+      {% if admin %}
+      <div class="conn-actions">
+        <form method="post" action="/connections/{{ c.id }}/check">
+          <button type="submit" class="btn ghost small">Проверить</button>
+        </form>
+        <a href="/connections/{{ c.id }}/edit" class="btn ghost small">Изменить</a>
+        <form method="post" action="/connections/{{ c.id }}/toggle">
+          <input type="hidden" name="state" value="{{ 'off' if c.is_active else 'on' }}">
+          <button type="submit" class="btn ghost small">{{ 'Выключить' if c.is_active else 'Включить' }}</button>
+        </form>
+      </div>
+      {% endif %}
+    </div>
+    <div class="kv kv-grid">
+      <div class="kv-row"><span class="kv-key">host</span><span class="kv-val mono">{{ c.host }}</span></div>
+      <div class="kv-row"><span class="kv-key">база</span><span class="kv-val mono">{{ c.database }}</span></div>
+      <div class="kv-row"><span class="kv-key">пользователь</span><span class="kv-val mono">{{ c.db_user }}</span></div>
+      <div class="kv-row"><span class="kv-key">видимость</span><span class="kv-val mono">{{ c.audience }}</span></div>
+      <div class="kv-row"><span class="kv-key">создал</span><span class="kv-val">{{ c.creator }}</span></div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% if total_pages > 1 %}
+<div class="pagination">
+  {% if page > 0 %}<a href="/connections?page={{ page - 1 }}" class="btn ghost small">&#9664; Назад</a>{% endif %}
+  <span class="mono">стр. {{ page + 1 }}/{{ total_pages }}</span>
+  {% if page < total_pages - 1 %}<a href="/connections?page={{ page + 1 }}" class="btn ghost small">Вперёд &#9654;</a>{% endif %}
+</div>
+{% endif %}
+{% else %}
+<p class="empty">Доступных подключений пока нет (роль: {{ role_name }}).</p>
+{% endif %}
+{% endblock %}
