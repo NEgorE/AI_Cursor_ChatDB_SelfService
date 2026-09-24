@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Дашборд — ChatDB{% endblock %}
+{% block page_title %}Дашборд{% endblock %}
+{% block content %}
+<div class="stats-grid">
+  {% if users_count is not none %}
+  <a class="stat-card" href="/users">
+    <div class="stat-value">{{ users_count }}</div>
+    <div class="stat-label">Пользователей</div>
+  </a>
+  {% endif %}
+  <a class="stat-card" href="/connections">
+    <div class="stat-value">{{ conn_count }}</div>
+    <div class="stat-label">Доступных подключений</div>
+  </a>
+  <a class="stat-card" href="/triggers">
+    <div class="stat-value">{{ trigger_count }}</div>
+    <div class="stat-label">Доступных триггеров</div>
+  </a>
+  <a class="stat-card" href="/triggers/schedule">
+    <div class="stat-value">{{ scheduled_count }}</div>
+    <div class="stat-label">Активны с расписанием</div>
+  </a>
+</div>
+
+<div class="two-col">
+  <section class="card">
+    <h2>Кто я</h2>
+    <div class="kv">
+      <div class="kv-row"><span class="kv-key">id</span><span class="kv-val mono">{{ whoami.id }}</span></div>
+      <div class="kv-row"><span class="kv-key">Имя</span><span class="kv-val">{{ whoami.full_name }}</span></div>
+      <div class="kv-row"><span class="kv-key">Telegram</span><span class="kv-val mono">{% if whoami.username %}@{{ whoami.username }} ({{ whoami.telegram_id }}){% else %}{{ whoami.telegram_id or "-" }}{% endif %}</span></div>
+      <div class="kv-row"><span class="kv-key">Роли</span><span class="kv-val mono">{{ whoami.roles_line }}</span></div>
+      <div class="kv-row"><span class="kv-key">Статус</span><span class="kv-val"><span class="badge {{ 'ok' if whoami.is_active else 'off' }}">{{ 'активен' if whoami.is_active else 'заблокирован' }}</span></span></div>
+    </div>
+    <p class="muted small">Код входа в веб — в боте: <span class="mono">/weblogin</span></p>
+  </section>
+
+  <section class="card">
+    <h2>Ближайшие срабатывания <span class="muted small">(24 ч)</span></h2>
+    {% if runs %}
+    <table class="table">
+      <thead><tr><th>Время</th><th>Триггер</th><th>Расписание</th></tr></thead>
+      <tbody>
+      {% for run in runs %}
+        <tr>
+          <td class="mono">{{ run.time }}</td>
+          <td><a href="/triggers/{{ run.trigger_id }}/edit">#{{ run.trigger_id }} {{ run.trigger_name }}</a></td>
+          <td class="mono muted">{{ run.label }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty">Нет активных триггеров с расписанием.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

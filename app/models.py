@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint, func
+from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -15,11 +15,10 @@ class Role(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
+    description: Mapped[str] = mapped_column(String(500), default="", nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-
-    users: Mapped[list["User"]] = relationship(back_populates="role")
 
 
 class User(Base):
@@ -31,46 +30,36 @@ class User(Base):
     work_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     telegram_user_id: Mapped[int | None] = mapped_column(nullable=True)
     telegram_username: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    role_id: Mapped[int] = mapped_column(ForeignKey("roles.id"), nullable=False)
+    # Историческая колонка первичной роли; актуальные роли — в user_roles.
+    # SQLite не даёт удалить колонку с FK — оставлена, ORM её не читает.
+    role_id: Mapped[int | None] = mapped_column(nullable=True)
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-    role: Mapped[Role] = relationship(back_populates="users")
-    visibility_groups: Mapped[list["VisibilityGroup"]] = relationship(
-        secondary="user_visibility_groups", back_populates="users"
+    roles: Mapped[list["Role"]] = relationship(
+        secondary="user_roles", lazy="selectin", order_by="Role.id"
     )
 
-
-class VisibilityGroup(Base):
-    __tablename__ = "visibility_groups"
-
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
-
-    users: Mapped[list[User]] = relationship(
-        secondary="user_visibility_groups", back_populates="visibility_groups"
-    )
-    connections: Mapped[list["Connection"]] = relationship(
-        secondary="connection_visibility_groups", back_populates="visibility_groups"
-    )
+    @property
+    def role(self) -> Role | None:
+        """Основная роль (для сообщений и проверок): Admin > DefaultUser > прочие."""
+        by_name = {r.name: r for r in self.roles}
+        if "Admin" in by_name:
+            return by_name["Admin"]
+        if "DefaultUser" in by_name:
+            return by_name["DefaultUser"]
+        return self.roles[0] if self.roles else None
 
 
-class UserVisibilityGroup(Base):
-    __tablename__ = "user_visibility_groups"
-    __table_args__ = (
-        UniqueConstraint("user_id", "visibility_group_id", name="uq_user_visibility_group"),
-    )
+class UserRole(Base):
+    __tablename__ = "user_roles"
+    __table_args__ = (UniqueConstraint("user_id", "role_id", name="uq_user_role"),)
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
-    visibility_group_id: Mapped[int] = mapped_column(
-        ForeignKey("visibility_groups.id"), nullable=False
-    )
+    role_id: Mapped[int] = mapped_column(ForeignKey("roles.id"), nullable=False)
 
 
 class Connection(Base):
@@ -80,29 +69,54 @@ class Connection(Base):
     name: Mapped[str] = mapped_column(String(150), unique=True, nullable=False)
     database_url: Mapped[str] = mapped_column(String(1000), nullable=False)
     created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    # Пусто — подключение видят все; иначе список ролей через запятую.
+    allowed_roles: Mapped[str] = mapped_column(String(500), default="", nullable=False)
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
     created_by: Mapped[User] = relationship()
-    visibility_groups: Mapped[list[VisibilityGroup]] = relationship(
-        secondary="connection_visibility_groups", back_populates="connections"
-    )
+    triggers: Mapped[list["Trigger"]] = relationship(back_populates="connection")
 
 
-class ConnectionVisibilityGroup(Base):
-    __tablename__ = "connection_visibility_groups"
-    __table_args__ = (
-        UniqueConstraint(
-            "connection_id",
-            "visibility_group_id",
-            name="uq_connection_visibility_group",
-        ),
-    )
+class Trigger(Base):
+    __tablename__ = "triggers"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(150), unique=True, nullable=False)
+    sql_query: Mapped[str] = mapped_column(Text, nullable=False)
     connection_id: Mapped[int] = mapped_column(ForeignKey("connections.id"), nullable=False)
-    visibility_group_id: Mapped[int] = mapped_column(
-        ForeignKey("visibility_groups.id"), nullable=False
+    created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    trigger_type: Mapped[str] = mapped_column(String(20), nullable=False)  # personal | group
+    # chat_id чата Telegram для group-триггера; у personal всегда NULL.
+    chat_id: Mapped[int | None] = mapped_column(nullable=True)
+    # Топик (ветка) внутри форума-чата, если указан.
+    message_thread_id: Mapped[int | None] = mapped_column(nullable=True)
+    schedule: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    message_template: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+    connection: Mapped[Connection] = relationship(back_populates="triggers")
+    created_by: Mapped[User] = relationship()
+
+
+class WebLoginCode(Base):
+    """Одноразовый код входа в веб-интерфейс (выдаёт бот командой /weblogin).
+
+    Время хранится наивным UTC (SQLite отбрасывает tzinfo).
+    """
+
+    __tablename__ = "web_login_codes"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(16), index=True, nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

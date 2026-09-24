@@ -13,6 +13,22 @@ class CommandConfig:
     description: str
     order: int
     admin_only: bool = False
+    show_in_menu: bool = True
+
+
+@dataclass(frozen=True)
+class WebConfig:
+    enabled: bool = True
+    host: str = "127.0.0.1"
+    port: int = 8000
+    # Ссылка, которую бот присылает вместе с кодом входа.
+    # Пусто — строится из host/port.
+    public_url: str = ""
+
+    def display_url(self) -> str:
+        if self.public_url.strip():
+            return self.public_url.strip().rstrip("/")
+        return f"http://{self.host}:{self.port}"
 
 
 @dataclass(frozen=True)
@@ -21,6 +37,7 @@ class AppConfig:
     initial_superuser_name: str
     database_url: str
     commands: list[CommandConfig]
+    web: WebConfig = WebConfig()
 
 
 DEFAULT_COMMANDS: list[CommandConfig] = [
@@ -29,6 +46,7 @@ DEFAULT_COMMANDS: list[CommandConfig] = [
     CommandConfig(command="users", description="Показать пользователей (Admin)", order=30, admin_only=True),
     CommandConfig(command="groups", description="Показать группы (Admin)", order=40, admin_only=True),
     CommandConfig(command="connections", description="Показать подключения (Admin)", order=50, admin_only=True),
+    CommandConfig(command="triggers", description="Показать триггеры", order=55),
     CommandConfig(command="ping", description="Проверка, что бот жив", order=60),
     CommandConfig(command="help", description="Показать меню команд", order=70),
 ]
@@ -55,12 +73,29 @@ def load_config(path: str = "config.yaml") -> AppConfig:
     if not database_url:
         raise ValueError("config.database_url is required.")
     commands = _parse_commands(raw.get("commands"))
+    web = _parse_web(raw.get("web"))
 
     return AppConfig(
         bot_token=bot_token,
         initial_superuser_name=initial_superuser_name,
         database_url=database_url,
         commands=commands,
+        web=web,
+    )
+
+
+def _parse_web(raw: Any) -> WebConfig:
+    if not isinstance(raw, dict):
+        return WebConfig()
+    try:
+        port = int(raw.get("port", 8000))
+    except (TypeError, ValueError):
+        port = 8000
+    return WebConfig(
+        enabled=bool(raw.get("enabled", True)),
+        host=str(raw.get("host", "127.0.0.1")).strip() or "127.0.0.1",
+        port=port,
+        public_url=str(raw.get("public_url", "")).strip(),
     )
 
 
@@ -81,12 +116,14 @@ def _parse_commands(raw_commands: Any) -> list[CommandConfig]:
         except (TypeError, ValueError):
             continue
         admin_only = bool(item.get("admin_only", False))
+        show_in_menu = bool(item.get("show_in_menu", True))
         parsed.append(
             CommandConfig(
                 command=command,
                 description=description,
                 order=order,
                 admin_only=admin_only,
+                show_in_menu=show_in_menu,
             )
         )
 

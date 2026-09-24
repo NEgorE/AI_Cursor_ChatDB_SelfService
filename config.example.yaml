@@ -5,27 +5,68 @@ bot_token: "your_bot_token_here"
 initial_superuser_name: "your_initial_superuser_name_here"
 database_url: "sqlite:///data/chatdb.sqlite3"
 
+# Веб-интерфейс (та же БД, тот же процесс, что и бот при python main.py)
+web:
+  enabled: true
+  host: "127.0.0.1"
+  port: 8000
+  # Ссылка, которую бот присылает вместе с кодом входа; пусто — из host/port
+  # public_url: "http://127.0.0.1:8000"
+
 commands:
   - command: "start"
     description: "Регистрация/вход в ChatDB MVP"
     order: 10
+    admin_only: false
+  - command: "weblogin"
+    description: "Код входа в веб-интерфейс"
+    order: 15
     admin_only: false
   - command: "whoami"
     description: "Показать текущего пользователя"
     order: 20
     admin_only: false
   - command: "users"
-    description: "Показать пользователей (Admin)"
+    description: "Показать пользователей"
     order: 30
     admin_only: true
-  - command: "groups"
-    description: "Показать группы (Admin)"
-    order: 40
+  - command: "add_role"
+    description: "Присвоить пользователю роль"
+    order: 35
     admin_only: true
+    show_in_menu: false
+  - command: "remove_role"
+    description: "Забрать роль у пользователя (Admin)"
+    order: 36
+    admin_only: true
+    show_in_menu: false
+  - command: "roles"
+    description: "Показать роли"
+    order: 45
+    admin_only: true
+  - command: "create_role"
+    description: "Создать роль"
+    order: 46
+    admin_only: true
+    show_in_menu: false
+  - command: "update_role"
+    description: "Переименовать роль"
+    order: 47
+    admin_only: true
+    show_in_menu: false
+  - command: "delete_role"
+    description: "Удалить роль"
+    order: 48
+    admin_only: true
+    show_in_menu: false
   - command: "connections"
-    description: "Показать подключения (Admin)"
+    description: "Показать подключения"
     order: 50
-    admin_only: true
+    admin_only: false
+  - command: "triggers"
+    description: "Показать триггеры"
+    order: 55
+    admin_only: false
   - command: "ping"
     description: "Проверка, что бот жив"
     order: 60

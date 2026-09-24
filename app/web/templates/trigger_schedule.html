@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Расписание на сутки — ChatDB{% endblock %}
+{% block page_title %}Расписание на ближайшие 24 часа{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <a href="/triggers" class="btn ghost small">К списку триггеров</a>
+</div>
+{% if runs %}
+<div class="card">
+  <table class="table">
+    <thead><tr><th>Время</th><th>Триггер</th><th>Расписание</th></tr></thead>
+    <tbody>
+    {% for run in runs %}
+      <tr>
+        <td class="mono">{{ run.time }}</td>
+        <td><a href="/triggers/{{ run.trigger_id }}/edit">#{{ run.trigger_id }} {{ run.trigger_name }}</a></td>
+        <td class="mono muted">{{ run.label }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="empty">Нет активных триггеров с расписанием.</p>
+{% endif %}
+{% endblock %}

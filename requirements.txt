@@ -1,3 +1,8 @@
 PyYAML
 SQLAlchemy
-python-telegram-bot
+python-telegram-bot[job-queue]
+fastapi
+uvicorn
+jinja2
+itsdangerous
+python-multipart

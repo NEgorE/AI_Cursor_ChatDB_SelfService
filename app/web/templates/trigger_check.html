@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Проверка триггера #{{ trigger.id }} — ChatDB{% endblock %}
+{% block page_title %}Проверка триггера #{{ trigger.id }} «{{ trigger_name }}»{% endblock %}
+{% block content %}
+{% if tg_note %}<div class="flash">{{ tg_note }}</div>{% endif %}
+<div class="card">
+  <div class="conn-title">
+    <span class="badge type">{{ trigger.type }}</span>
+    <span class="badge {{ 'ok' if trigger.is_active else 'off' }}">{{ 'активен' if trigger.is_active else 'выключен' }}</span>
+    <a href="/triggers/{{ trigger.id }}/edit" class="btn ghost small">Изменить</a>
+    <a href="/triggers" class="btn ghost small">К списку</a>
+  </div>
+  <div class="kv kv-grid">
+    <div class="kv-row"><span class="kv-key">{{ 'чат' if trigger.type == 'групповой' else 'получатель' }}</span><span class="kv-val mono">{{ trigger.target }}</span></div>
+    <div class="kv-row"><span class="kv-key">подключение</span><span class="kv-val mono">{{ trigger.connection_name }}</span></div>
+    <div class="kv-row"><span class="kv-key">расписание</span><span class="kv-val mono">{{ trigger.schedule }}</span></div>
+    <div class="kv-row"><span class="kv-key">сообщение</span><span class="kv-val">{{ trigger.message }}</span></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>SQL</h2>
+  <pre class="code-block mono">{{ sql_query }}</pre>
+</div>
+
+{% if result.blocked_reason %}
+<div class="flash err">{{ result.blocked_reason }}</div>
+{% elif result.ok %}
+<div class="flash ok">Проверка выполнена за {{ result.elapsed_ms }} мс.</div>
+<div class="card">
+  <h2>Результат</h2>
+  <p class="result-text">{{ result.rendered }}</p>
+  {% if result.values %}<p class="muted small mono">(значения: {{ result.values }})</p>{% endif %}
+</div>
+{% else %}
+<div class="flash err">Ошибка выполнения ({{ result.elapsed_ms }} мс):</div>
+<div class="card"><pre class="error-details">{{ result.error }}</pre></div>
+{% endif %}
+{% endblock %}

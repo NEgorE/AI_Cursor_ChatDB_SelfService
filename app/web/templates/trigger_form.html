@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Новый триггер' if mode == 'new' else 'Изменение триггера #' ~ trigger_id }} — ChatDB{% endblock %}
+{% block page_title %}{{ 'Новый триггер' if mode == 'new' else 'Изменение #' ~ trigger_id ~ ' «' ~ trigger_name ~ '»' }}{% endblock %}
+{% block content %}
+<div class="card form-card">
+  <form method="post" action="{{ '/triggers/new' if mode == 'new' else '/triggers/' ~ trigger_id ~ '/edit' }}">
+    <div class="field">
+      <label for="name">Имя</label>
+      <input id="name" name="name" value="{{ values.name }}" {% if not name_editable %}readonly class="readonly"{% else %}required{% endif %}>
+      {% if not name_editable %}<p class="hint">Имя триггера не меняется (как в боте).</p>{% endif %}
+    </div>
+
+    <div class="field">
+      <label for="connection_id">Подключение</label>
+      <select id="connection_id" name="connection_id" required>
+        <option value="" disabled {{ 'selected' if not values.connection_id else '' }}>— выберите —</option>
+        {% for c in connections %}
+        <option value="{{ c.id }}" {{ 'selected' if values.connection_id == c.id|string else '' }}>{{ c.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="field">
+      <label>Тип триггера</label>
+      <div class="radio-row" id="trigger-type-row">
+        <label class="radio"><input type="radio" name="trigger_type" value="personal"
+               {{ 'checked' if values.trigger_type != 'group' }}> Личный (уведомления вам в личку)</label>
+        <label class="radio"><input type="radio" name="trigger_type" value="group"
+               {{ 'checked' if values.trigger_type == 'group' }}> Групповой (в чат Telegram)</label>
+      </div>
+    </div>
+
+    <div class="field" id="chat-id-field" {{ '' if values.trigger_type == 'group' else 'hidden' }}>
+      <label for="chat_id">chat_id чата</label>
+      <input id="chat_id" name="chat_id" value="{{ values.chat_id }}" class="mono"
+             placeholder="-1001234567890 или https://t.me/c/2345678901/496">
+      <p class="hint">Числовой chat_id или ссылка на сообщение/топик в чате —
+         из ссылки сохранится и топик форума (ветка), куда придёт уведомление.
+         Бот должен быть добавлен в этот чат.</p>
+    </div>
+
+    <div class="field">
+      <label for="schedule">Расписание</label>
+      <input id="schedule" name="schedule" value="{{ values.schedule }}" class="mono" list="schedule-presets"
+             placeholder="- или every:5m или daily:09:00">
+      <datalist id="schedule-presets">
+        <option value="-">— без расписания (только вручную)</option>
+        <option value="every:5m">каждые 5 минут</option>
+        <option value="every:10m">каждые 10 минут</option>
+        <option value="every:15m">каждые 15 минут</option>
+        <option value="every:30m">каждые 30 минут</option>
+        <option value="every:1h">каждый час</option>
+        <option value="every:2h">каждые 2 часа</option>
+        <option value="every:4h">каждые 4 часа</option>
+        <option value="daily:09:00">ежедневно в 09:00 (местное)</option>
+      </datalist>
+      <p class="hint"><span class="mono">-</span> — вручную; <span class="mono">every:5m / every:1h</span>; <span class="mono">daily:09:00</span> — местное время (хранится в UTC).</p>
+    </div>
+
+    <div class="field">
+      <label for="sql">SQL-запрос</label>
+      <textarea id="sql" name="sql" rows="5" class="mono" required
+                placeholder="SELECT status AS &quot;1&quot; FROM health LIMIT 1">{{ values.sql }}</textarea>
+      <p class="hint">Ровно 1 строка. Несколько значений — именуйте столбцы числами:
+         <span class="mono">SELECT x AS "1", y AS "2"</span>. Столбец "1" подставится в $1 текста сообщения.</p>
+    </div>
+
+    <div class="field">
+      <label for="message_template">Текст сообщения</label>
+      <textarea id="message_template" name="message_template" rows="3"
+                placeholder="Текущая версия стенда: $1">{{ values.message_template }}</textarea>
+      <p class="hint">$1, $2… — значения столбцов запроса. Пусто или <span class="mono">-</span> — отправлять просто значение.</p>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn primary">{{ 'Создать' if mode == 'new' else 'Сохранить' }}</button>
+      <a href="/triggers" class="btn ghost">Отмена</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
